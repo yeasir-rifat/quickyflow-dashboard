@@ -14,6 +14,14 @@ export function AuthProvider({ children }) {
     return u;
   }, []);
 
+  // Used when the browser extension hands off an already-authenticated
+  // session via the URL (see App.jsx) — skips the password form entirely.
+  const loginFromTokens = useCallback(async (accessToken, refreshToken) => {
+    const u = await sb.setSessionFromTokens(accessToken, refreshToken);
+    setUser({ email: u.email, id: u.id, role: sb.role });
+    return u;
+  }, []);
+
   const logout = useCallback(async () => {
     await sb.signOut();
     setUser(null);
@@ -24,6 +32,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         login,
+        loginFromTokens,
         logout,
         isAdmin: user?.role === "admin",
         isAssistantAdmin: user?.role === "assistant_admin",
