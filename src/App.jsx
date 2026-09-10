@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import Sidebar from "./components/Sidebar";
@@ -29,8 +29,40 @@ function RequireUserManagement({ children }) {
 // sees only what RLS + the page's own query allow.)
 
 export default function App() {
-  const { user, canViewAllActivity } = useAuth();
+  const { user, canViewAllActivity, loginFromTokens } = useAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [handoffPending, setHandoffPending] = useState(
+    () => window.location.hash.includes("qf_at=")
+  );
+
+  // The Chrome extension's popup links here with the user's session in the
+  // URL fragment (#qf_at=...&qf_rt=...) after they log in there, so this
+  // tab opens already signed in instead of showing the login form again.
+  // A fragment (not a query string) is used on purpose: fragments are
+  // never sent to any server, so the tokens never touch our own backend
+  // or get logged anywhere — only this client-side code ever reads them.
+  useEffect(() => {
+    if (!handoffPending) return;
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const at = params.get("qf_at");
+    const rt = params.get("qf_rt");
+    // Always strip the hash, even on failure, so a bad/expired token
+    // isn't left sitting in the URL (history, refresh, sharing the link).
+    window.history.replaceState(null, "", window.location.pathname);
+    if (!at || !rt) {
+      setHandoffPending(false);
+      return;
+    }
+    loginFromTokens(at, rt)
+      .catch(() => {
+        // Invalid/expired handoff — fall back to the normal login screen.
+      })
+      .finally(() => setHandoffPending(false));
+  }, [handoffPending, loginFromTokens]);
+
+  if (handoffPending) {
+    return <div className="loading-text">Signing you in…</div>;
+  }
 
   return (
     <Routes>
