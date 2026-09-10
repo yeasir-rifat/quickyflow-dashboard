@@ -86,6 +86,29 @@ class SupabaseClient {
     return data.user;
   }
 
+  // Accepts a session handed off from the browser extension (its popup
+  // already has a valid access_token/refresh_token pair from its own
+  // signIn()). Used for the "log in on the extension, dashboard opens
+  // already signed in" flow — see the hash-based handoff read in App.jsx.
+  async setSessionFromTokens(accessToken, refreshToken) {
+    this.accessToken = accessToken;
+    this.refreshToken = refreshToken;
+    // We don't have the user id/email yet — ask GoTrue who this token
+    // belongs to before we can load the profile role or save to storage.
+    const res = await qfFetch(`${this.url}/auth/v1/user`, {
+      method: "GET",
+      headers: { apikey: this.anonKey, Authorization: `Bearer ${accessToken}` },
+    });
+    const user = await res.json();
+    if (!res.ok) throw new Error(user.error_description || user.msg || "Invalid session");
+    this.userId = user.id;
+    this.userEmail = user.email;
+    await this._loadProfileRole();
+    this._saveToStorage();
+    this._scheduleRefresh(3300); // unknown real expiry after handoff — refresh proactively (~55 min)
+    return user;
+  }
+
   // Access tokens expire (default ~1hr) — without this, a dashboard tab
   // left open would start silently failing requests after an hour.
   _scheduleRefresh(expiresInSeconds) {
